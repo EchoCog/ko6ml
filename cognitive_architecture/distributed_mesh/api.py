@@ -230,7 +230,8 @@ def create_cognitive_agent():
         }), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        logger.error("An error occurred while creating a cognitive agent: %s", str(e), exc_info=True)
+        return jsonify({'error': 'An internal error occurred while processing your request.'}), 400
 
 
 @cognitive_api.route('/api/v1/cognitive/agents/<agent_id>', methods=['GET'])

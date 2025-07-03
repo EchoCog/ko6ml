@@ -166,7 +166,8 @@ def submit_mesh_task():
         }), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        logger.error("Error occurred while submitting mesh task: %s", str(e), exc_info=True)
+        return jsonify({'error': 'An internal error occurred while processing your request.'}), 400
 
 
 @cognitive_api.route('/api/v1/mesh/tasks/<task_id>', methods=['GET'])

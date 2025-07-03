@@ -116,7 +116,8 @@ def register_mesh_node():
         }), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        logger.error("Error occurred while registering mesh node: %s", str(e), exc_info=True)
+        return jsonify({'error': 'An internal error occurred while processing your request.'}), 400
 
 
 @cognitive_api.route('/api/v1/mesh/nodes/<node_id>', methods=['DELETE'])

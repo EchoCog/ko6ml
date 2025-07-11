@@ -1,0 +1,65 @@
+{
+  "state_transitions": [
+    {
+      "from_state": "idle",
+      "to_state": "attending",
+      "links_created": 1,
+      "transition_recorded": true
+    },
+    {
+      "from_state": "attending",
+      "to_state": "processing",
+      "links_created": 1,
+      "transition_recorded": true
+    },
+    {
+      "from_state": "processing",
+      "to_state": "integrating",
+      "links_created": 1,
+      "transition_recorded": true
+    },
+    {
+      "from_state": "integrating",
+      "to_state": "responding",
+      "links_created": 1,
+      "transition_recorded": true
+    },
+    {
+      "from_state": "responding",
+      "to_state": "idle",
+      "links_created": 1,
+      "transition_recorded": true
+    }
+  ],
+  "scheme_expressions": [
+    {
+      "expression": "(ConceptNode \"Agent\")",
+      "pattern_name": "test_pattern_1",
+      "registered": true,
+      "has_scheme_repr": true,
+      "has_atomspace_pattern": true
+    },
+    {
+      "expression": "(PredicateNode \"processes\")",
+      "pattern_name": "test_pattern_2",
+      "registered": true,
+      "has_scheme_repr": true,
+      "has_atomspace_pattern": true
+    },
+    {
+      "expression": "(EvaluationLink (PredicateNode \"has_state\") (ListLink (ConceptNode \"Agent\") (ConceptNode \"Active\")))",
+      "pattern_name": "test_pattern_3",
+      "registered": true,
+      "has_scheme_repr": true,
+      "has_atomspace_pattern": true
+    },
+    {
+      "expression": "(ImplicationLink (ConceptNode \"Input\") (ConceptNode \"Output\"))",
+      "pattern_name": "test_pattern_4",
+      "registered": true,
+      "has_scheme_repr": true,
+      "has_atomspace_pattern": true
+    }
+  ],
+  "total_primitives_tested": 9
+}

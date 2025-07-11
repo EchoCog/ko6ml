@@ -1,0 +1,55 @@
+graph TD
+    subgraph "Cognitive Architecture Hypergraph"
+        Input[Input Text] --> SchemeAdapter[Scheme Adapter]
+        SchemeAdapter --> AtomSpace[AtomSpace Patterns]
+        
+        subgraph "Agent Hypergraph Nodes"
+            Agent1[Agent 1<br/>Tensor: 512x64x2048x128x32<br/>State: integrating]
+            Agent2[Agent 2<br/>Tensor: 512x64x2048x128x32<br/>State: integrating]
+        end
+        
+        subgraph "State Transition Links"
+            T1[idle → attending]
+            T2[attending → processing] 
+            T3[processing → integrating]
+        end
+        
+        AtomSpace --> Agent1
+        AtomSpace --> Agent2
+        Agent1 --> T1
+        Agent1 --> T2
+        Agent1 --> T3
+        Agent2 --> T1
+        Agent2 --> T2
+        Agent2 --> T3
+        
+        subgraph "ECAN Attention"
+            AttentionFocus[Attention Focus]
+            STIAllocation[STI Allocation]
+            LTIAllocation[LTI Allocation]
+        end
+        
+        Agent1 --> AttentionFocus
+        Agent2 --> AttentionFocus
+        AttentionFocus --> STIAllocation
+        AttentionFocus --> LTIAllocation
+        
+        subgraph "Distributed Mesh"
+            MeshNode1[Mesh Node 1<br/>Agent Processor]
+            MeshNode2[Mesh Node 2<br/>Attention Allocator]
+            Task1[Cognitive Task]
+        end
+        
+        Agent1 --> MeshNode1
+        Agent2 --> MeshNode2
+        STIAllocation --> Task1
+        Task1 --> MeshNode1
+    end
+    
+    style Input fill:#e1f5fe
+    style AtomSpace fill:#f3e5f5
+    style Agent1 fill:#e8f5e8
+    style Agent2 fill:#e8f5e8
+    style AttentionFocus fill:#fff3e0
+    style MeshNode1 fill:#fce4ec
+    style MeshNode2 fill:#fce4ec

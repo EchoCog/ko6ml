@@ -1,0 +1,195 @@
+{
+  "tensor_shape_prime_factorization_mapping": [
+    {
+      "config": {
+        "modality": 512,
+        "depth": 64,
+        "context": 2048,
+        "salience": 128,
+        "autonomy_index": 32
+      },
+      "prime_factors": {
+        "modality": {
+          "value": 512,
+          "prime_factors": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "factorization": "2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2"
+        },
+        "depth": {
+          "value": 64,
+          "prime_factors": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "factorization": "2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2"
+        },
+        "context": {
+          "value": 2048,
+          "prime_factors": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "factorization": "2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2"
+        },
+        "salience": {
+          "value": 128,
+          "prime_factors": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "factorization": "2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2"
+        },
+        "autonomy_index": {
+          "value": 32,
+          "prime_factors": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "factorization": "2 \u00d7 2 \u00d7 2 \u00d7 2 \u00d7 2"
+        }
+      },
+      "signature": "512:2,2,2,2,2,2,2,2,2|64:2,2,2,2,2,2|2048:2,2,2,2,2,2,2,2,2,2,2|128:2,2,2,2,2,2,2|32:2,2,2,2,2"
+    },
+    {
+      "config": {
+        "modality": 315,
+        "depth": 45,
+        "context": 1001,
+        "salience": 77,
+        "autonomy_index": 21
+      },
+      "prime_factors": {
+        "modality": {
+          "value": 315,
+          "prime_factors": [
+            3,
+            3,
+            5,
+            7
+          ],
+          "factorization": "3 \u00d7 3 \u00d7 5 \u00d7 7"
+        },
+        "depth": {
+          "value": 45,
+          "prime_factors": [
+            3,
+            3,
+            5
+          ],
+          "factorization": "3 \u00d7 3 \u00d7 5"
+        },
+        "context": {
+          "value": 1001,
+          "prime_factors": [
+            7,
+            11,
+            13
+          ],
+          "factorization": "7 \u00d7 11 \u00d7 13"
+        },
+        "salience": {
+          "value": 77,
+          "prime_factors": [
+            7,
+            11
+          ],
+          "factorization": "7 \u00d7 11"
+        },
+        "autonomy_index": {
+          "value": 21,
+          "prime_factors": [
+            3,
+            7
+          ],
+          "factorization": "3 \u00d7 7"
+        }
+      },
+      "signature": "315:3,3,5,7|45:3,3,5|1001:7,11,13|77:7,11|21:3,7"
+    },
+    {
+      "config": {
+        "modality": 257,
+        "depth": 31,
+        "context": 1009,
+        "salience": 127,
+        "autonomy_index": 17
+      },
+      "prime_factors": {
+        "modality": {
+          "value": 257,
+          "prime_factors": [
+            257
+          ],
+          "factorization": "257"
+        },
+        "depth": {
+          "value": 31,
+          "prime_factors": [
+            31
+          ],
+          "factorization": "31"
+        },
+        "context": {
+          "value": 1009,
+          "prime_factors": [
+            1009
+          ],
+          "factorization": "1009"
+        },
+        "salience": {
+          "value": 127,
+          "prime_factors": [
+            127
+          ],
+          "factorization": "127"
+        },
+        "autonomy_index": {
+          "value": 17,
+          "prime_factors": [
+            17
+          ],
+          "factorization": "17"
+        }
+      },
+      "signature": "257:257|31:31|1009:1009|127:127|17:17"
+    }
+  ],
+  "description": "Prime factorization ensures unique cognitive signatures for tensor shapes",
+  "dimensions": [
+    "modality",
+    "depth",
+    "context",
+    "salience",
+    "autonomy_index"
+  ]
+}

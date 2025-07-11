@@ -1,0 +1,25 @@
+{
+  "global_statistics": {
+    "agents": 2,
+    "nodes": 2,
+    "links": 0
+  },
+  "agent_fragments": [
+    {
+      "agent_id": "b61757ca",
+      "state": "integrating",
+      "tensor_signature": "512:2,2,2,2,2,2,2,2,2|64:2,2,2,2,2,2|2048:2,2,2,2,",
+      "nodes": 1,
+      "links": 3,
+      "activation_level": 0.0
+    },
+    {
+      "agent_id": "588898b6",
+      "state": "integrating",
+      "tensor_signature": "512:2,2,2,2,2,2,2,2,2|64:2,2,2,2,2,2|2048:2,2,2,2,",
+      "nodes": 1,
+      "links": 3,
+      "activation_level": 0.0
+    }
+  ]
+}

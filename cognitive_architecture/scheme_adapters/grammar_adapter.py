@@ -197,32 +197,50 @@ class SchemeGrammarAdapter:
         """Translate KoboldAI text to AtomSpace patterns"""
         atomspace_patterns = []
         
-        # Extract concepts (nouns)
-        concepts = re.findall(r'\b[A-Z][a-z]+\b', kobold_text)
-        for concept in concepts:
+        # Extract concepts (both capitalized and important words)
+        concepts = re.findall(r'\b[A-Z][a-z]+\b', kobold_text)  # Capitalized words
+        important_words = re.findall(r'\b(?:agent|process|system|memory|attention|learning|cognitive|information|intelligence|resource|mechanism|algorithm)\w*\b', kobold_text.lower())
+        
+        # Add concepts as nodes
+        all_concepts = list(set(concepts + [word.capitalize() for word in important_words]))
+        for concept in all_concepts:
             pattern = f"(ConceptNode \"{concept}\")"
             atomspace_patterns.append(pattern)
         
-        # Extract predicates (verbs)
-        predicates = re.findall(r'\b[a-z]+ed\b|\b[a-z]+ing\b|\b[a-z]+s\b', kobold_text)
-        for predicate in predicates:
+        # Extract predicates (verbs and actions)
+        predicates = re.findall(r'\b[a-z]+(?:es|s|ed|ing)\b', kobold_text.lower())
+        action_words = re.findall(r'\b(?:perceive|process|transform|store|focus|adapt|enable|optimize|utilize|allocate)\w*\b', kobold_text.lower())
+        
+        # Add predicates as nodes
+        all_predicates = list(set(predicates + action_words))
+        for predicate in all_predicates:
             pattern = f"(PredicateNode \"{predicate}\")"
             atomspace_patterns.append(pattern)
         
-        # Create relationships
+        # Create relationships by analyzing sentence structure
         sentences = re.split(r'[.!?]', kobold_text)
         for sentence in sentences:
             if sentence.strip():
                 words = sentence.strip().split()
-                if len(words) >= 2:
-                    # Simple subject-predicate relationship
-                    subject = words[0]
-                    predicate = words[1] if len(words) > 1 else "exists"
-                    
-                    relationship = f"(EvaluationLink (PredicateNode \"{predicate}\") (ConceptNode \"{subject}\"))"
-                    atomspace_patterns.append(relationship)
+                if len(words) >= 3:
+                    # Look for subject-verb-object patterns
+                    for i, word in enumerate(words):
+                        if word in all_concepts and i + 1 < len(words):
+                            next_word = words[i + 1].lower()
+                            if next_word in all_predicates or next_word.endswith(('s', 'es', 'ed', 'ing')):
+                                # Found subject-predicate relationship
+                                relationship = f"(EvaluationLink (PredicateNode \"{next_word}\") (ConceptNode \"{word}\"))"
+                                atomspace_patterns.append(relationship)
+                                
+                                # Look for object
+                                if i + 2 < len(words):
+                                    obj_word = words[i + 2]
+                                    if obj_word in all_concepts or obj_word.capitalize() in all_concepts:
+                                        obj_concept = obj_word if obj_word in all_concepts else obj_word.capitalize()
+                                        relationship = f"(EvaluationLink (PredicateNode \"{next_word}\") (ListLink (ConceptNode \"{word}\") (ConceptNode \"{obj_concept}\")))"
+                                        atomspace_patterns.append(relationship)
         
-        return atomspace_patterns
+        return list(set(atomspace_patterns))  # Remove duplicates
     
     def translate_atomspace_to_kobold(self, atomspace_patterns: List[str]) -> str:
         """Translate AtomSpace patterns to KoboldAI-compatible text"""
@@ -230,30 +248,33 @@ class SchemeGrammarAdapter:
         predicates = []
         relationships = []
         
+        # Extract patterns with deduplication
+        concept_set = set()
+        predicate_set = set()
+        
         for pattern in atomspace_patterns:
             if "ConceptNode" in pattern:
                 concept_match = re.search(r'ConceptNode "([^"]+)"', pattern)
                 if concept_match:
-                    concepts.append(concept_match.group(1))
+                    concept = concept_match.group(1)
+                    if concept not in concept_set:
+                        concepts.append(concept)
+                        concept_set.add(concept)
             elif "PredicateNode" in pattern:
                 predicate_match = re.search(r'PredicateNode "([^"]+)"', pattern)
                 if predicate_match:
-                    predicates.append(predicate_match.group(1))
+                    predicate = predicate_match.group(1)
+                    if predicate not in predicate_set:
+                        predicates.append(predicate)
+                        predicate_set.add(predicate)
             elif "EvaluationLink" in pattern:
                 relationships.append(pattern)
         
-        # Generate text from patterns
+        # Generate more natural text from patterns
         text_parts = []
         
-        # Add concepts
-        if concepts:
-            text_parts.append(f"The concepts involved are: {', '.join(concepts)}.")
-        
-        # Add predicates
-        if predicates:
-            text_parts.append(f"The actions include: {', '.join(predicates)}.")
-        
-        # Generate simple sentences from relationships
+        # Try to construct natural sentences from relationships first
+        natural_sentences = []
         for relationship in relationships:
             # Extract subject and predicate from EvaluationLink
             concept_match = re.search(r'ConceptNode "([^"]+)"', relationship)
@@ -262,9 +283,41 @@ class SchemeGrammarAdapter:
             if concept_match and predicate_match:
                 subject = concept_match.group(1)
                 predicate = predicate_match.group(1)
-                text_parts.append(f"{subject} {predicate}.")
+                # Create more natural sentence structure
+                if predicate.endswith('s'):
+                    natural_sentences.append(f"The {subject.lower()} {predicate}")
+                else:
+                    natural_sentences.append(f"The {subject.lower()} {predicate}s")
         
-        return " ".join(text_parts)
+        # If we have natural sentences, use them
+        if natural_sentences:
+            text_parts.extend([sentence + "." for sentence in natural_sentences])
+        else:
+            # Fall back to constructing from individual components
+            if concepts and predicates:
+                # Try to create simple subject-predicate sentences
+                for i, concept in enumerate(concepts):
+                    if i < len(predicates):
+                        predicate = predicates[i]
+                        if predicate.endswith('s'):
+                            text_parts.append(f"The {concept.lower()} {predicate}.")
+                        else:
+                            text_parts.append(f"The {concept.lower()} {predicate}s.")
+                    else:
+                        text_parts.append(f"The {concept.lower()} exists.")
+                
+                # Add remaining predicates
+                remaining_predicates = predicates[len(concepts):]
+                if remaining_predicates:
+                    text_parts.append(f"Additional actions include {', '.join(remaining_predicates)}.")
+            else:
+                # Simple enumeration as fallback
+                if concepts:
+                    text_parts.append(f"Concepts: {', '.join(concepts)}.")
+                if predicates:
+                    text_parts.append(f"Actions: {', '.join(predicates)}.")
+        
+        return " ".join(text_parts) if text_parts else "No recognizable patterns found."
     
     def create_implication_pattern(self, antecedent: str, consequent: str) -> str:
         """Create an implication pattern"""

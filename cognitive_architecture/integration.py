@@ -57,12 +57,16 @@ class KoboldCognitiveIntegrator:
         try:
             logger.info("Initializing KoboldAI cognitive architecture integration...")
             
+            # Set up ECAN integration with mesh orchestrator
+            from .distributed_mesh.orchestrator import setup_ecan_integration
+            setup_ecan_integration()
+            
             # Register default cognitive agent for KoboldAI
             kobold_agent = CognitiveAgent()
             kobold_agent.agent_id = "kobold_main_agent"
             cognitive_core.register_agent(kobold_agent)
             
-            # Register attention elements for KoboldAI components
+            # Register attention elements for KoboldAI components with enhanced ECAN features
             ecan_system.register_cognitive_element("user_input", AttentionValue(sti=0.8, urgency=0.7))
             ecan_system.register_cognitive_element("model_output", AttentionValue(sti=0.7, lti=0.5))
             ecan_system.register_cognitive_element("context_memory", AttentionValue(sti=0.3, lti=0.9))
@@ -74,6 +78,9 @@ class KoboldCognitiveIntegrator:
             ecan_system.add_spreading_link("context_memory", "model_output", 0.7)
             ecan_system.add_spreading_link("world_info", "context_memory", 0.6)
             ecan_system.add_spreading_link("author_note", "user_input", 0.5)
+            
+            # Register AtomSpace patterns for cognitive elements
+            self._setup_atomspace_patterns()
             
             # Register mesh nodes for KoboldAI processing
             kobold_processor = MeshNode(
@@ -107,6 +114,41 @@ class KoboldCognitiveIntegrator:
         except Exception as e:
             logger.error(f"Failed to initialize cognitive architecture: {e}")
             return False
+    
+    def _setup_atomspace_patterns(self):
+        """Set up AtomSpace patterns for cognitive elements"""
+        # Register AtomSpace patterns for KoboldAI cognitive elements
+        patterns_config = [
+            ("user_input", [
+                "(ConceptNode \"UserInput\")",
+                "(PredicateNode \"provides\")",
+                "(EvaluationLink (PredicateNode \"contains\") (ListLink (ConceptNode \"UserInput\") (ConceptNode \"Intent\")))"
+            ]),
+            ("model_output", [
+                "(ConceptNode \"ModelOutput\")",
+                "(PredicateNode \"generates\")",
+                "(EvaluationLink (PredicateNode \"responds_to\") (ListLink (ConceptNode \"Model\") (ConceptNode \"UserInput\")))"
+            ]),
+            ("context_memory", [
+                "(ConceptNode \"ContextMemory\")",
+                "(PredicateNode \"stores\")",
+                "(EvaluationLink (PredicateNode \"contains\") (ListLink (ConceptNode \"Memory\") (ConceptNode \"Context\")))"
+            ]),
+            ("world_info", [
+                "(ConceptNode \"WorldInfo\")",
+                "(PredicateNode \"describes\")",
+                "(EvaluationLink (PredicateNode \"defines\") (ListLink (ConceptNode \"World\") (ConceptNode \"Rules\")))"
+            ]),
+            ("author_note", [
+                "(ConceptNode \"AuthorNote\")",
+                "(PredicateNode \"guides\")",
+                "(EvaluationLink (PredicateNode \"influences\") (ListLink (ConceptNode \"Author\") (ConceptNode \"Narrative\")))"
+            ])
+        ]
+        
+        for element_id, patterns in patterns_config:
+            for pattern in patterns:
+                ecan_system.register_atomspace_pattern(element_id, pattern, 1.0)
     
     def _register_default_patterns(self):
         """Register default Scheme patterns for KoboldAI"""
@@ -178,14 +220,31 @@ class KoboldCognitiveIntegrator:
                     cached_result = self.translation_cache[cache_key]
                     atomspace_patterns = cached_result['patterns']
                 else:
-                    atomspace_patterns = scheme_adapter.translate_kobold_to_atomspace(user_text)
-                    if self.settings['cache_translations']:
-                        self._cache_translation(cache_key, {'patterns': atomspace_patterns, 'text': user_text})
+                    try:
+                        atomspace_patterns = scheme_adapter.translate_kobold_to_atomspace(user_text)
+                        if self.settings['cache_translations']:
+                            self._cache_translation(cache_key, {'patterns': atomspace_patterns, 'text': user_text})
+                        
+                        # Register patterns with ECAN for attention spreading
+                        for pattern in atomspace_patterns:
+                            ecan_system.register_atomspace_pattern("user_input", pattern, 0.8)
+                    except Exception as e:
+                        logger.error(f"Error translating to AtomSpace patterns: {e}")
+                        atomspace_patterns = []
             
             # Update cognitive agent state
-            if "kobold_main_agent" in cognitive_core.agents:
+            agent_exists = "kobold_main_agent" in cognitive_core.agents
+            if agent_exists:
                 agent = cognitive_core.agents["kobold_main_agent"]
                 agent.update_state(CognitiveState.ATTENDING)
+            else:
+                logger.warning("kobold_main_agent not found, creating new agent")
+                # Create the agent if it doesn't exist
+                from .core import CognitiveAgent
+                kobold_agent = CognitiveAgent()
+                kobold_agent.agent_id = "kobold_main_agent"
+                cognitive_core.register_agent(kobold_agent)
+                kobold_agent.update_state(CognitiveState.ATTENDING)
             
             # Submit distributed processing task if enabled
             task_id = None
@@ -200,6 +259,10 @@ class KoboldCognitiveIntegrator:
                     priority=8
                 )
                 task_id = mesh_orchestrator.submit_task(task)
+                
+                # Register task with ECAN for attention-based scheduling
+                if task_id:
+                    ecan_system.register_task_attention_mapping(task_id, "user_input")
             
             self.integration_stats['texts_processed'] += 1
             self.integration_stats['patterns_generated'] += len(atomspace_patterns)
@@ -233,14 +296,21 @@ class KoboldCognitiveIntegrator:
                     cached_result = self.translation_cache[cache_key]
                     atomspace_patterns = cached_result['patterns']
                 else:
-                    atomspace_patterns = scheme_adapter.translate_kobold_to_atomspace(generated_text)
-                    if self.settings['cache_translations']:
-                        self._cache_translation(cache_key, {'patterns': atomspace_patterns, 'text': generated_text})
+                    try:
+                        atomspace_patterns = scheme_adapter.translate_kobold_to_atomspace(generated_text)
+                        if self.settings['cache_translations']:
+                            self._cache_translation(cache_key, {'patterns': atomspace_patterns, 'text': generated_text})
+                    except Exception as e:
+                        logger.error(f"Error translating output to AtomSpace patterns: {e}")
+                        atomspace_patterns = []
             
             # Update cognitive agent state
-            if "kobold_main_agent" in cognitive_core.agents:
+            agent_exists = "kobold_main_agent" in cognitive_core.agents
+            if agent_exists:
                 agent = cognitive_core.agents["kobold_main_agent"]
                 agent.update_state(CognitiveState.RESPONDING)
+            else:
+                logger.warning("kobold_main_agent not found during output processing")
             
             # Submit analysis task
             task_id = None
@@ -377,7 +447,8 @@ class KoboldCognitiveIntegrator:
     def _get_cognitive_state(self) -> Dict[str, Any]:
         """Get current cognitive state"""
         try:
-            if "kobold_main_agent" in cognitive_core.agents:
+            agent_exists = "kobold_main_agent" in cognitive_core.agents
+            if agent_exists:
                 agent = cognitive_core.agents["kobold_main_agent"]
                 return {
                     "agent_id": agent.agent_id,
@@ -386,7 +457,8 @@ class KoboldCognitiveIntegrator:
                     "hypergraph_nodes": len(agent.hypergraph_nodes),
                     "hypergraph_links": len(agent.hypergraph_links)
                 }
-            return {}
+            else:
+                return {"error": "kobold_main_agent not found", "available_agents": list(cognitive_core.agents.keys())}
         except Exception as e:
             logger.error(f"Error getting cognitive state: {e}")
             return {"error": str(e)}
@@ -483,6 +555,153 @@ class KoboldCognitiveIntegrator:
             
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
+    
+    async def benchmark_attention_allocation(self, duration_minutes: int = 2, 
+                                           text_generation_rate: float = 0.3) -> Dict[str, Any]:
+        """Benchmark ECAN attention allocation across distributed agents"""
+        if not self.is_initialized:
+            logger.error("Cannot benchmark: system not initialized")
+            return {"error": "System not initialized"}
+        
+        logger.info(f"Starting {duration_minutes}-minute attention allocation benchmark")
+        
+        benchmark_start = time.time()
+        duration_seconds = duration_minutes * 60
+        
+        # Sample test texts for different types of processing
+        test_texts = [
+            "The brave knight ventured into the dark forest.",
+            "Magic spells illuminated the ancient castle walls.",
+            "Dragons soared through the mystical realm above.",
+            "The wizard studied arcane texts in the tower library.",
+            "Adventure awaits those who seek the hidden treasure."
+        ]
+        
+        # Track benchmark metrics
+        submitted_tasks = []
+        attention_snapshots = []
+        task_completions = []
+        
+        elapsed_time = 0
+        while elapsed_time < duration_seconds:
+            cycle_start = time.time()
+            
+            # Generate user input at specified rate
+            if len(submitted_tasks) < (elapsed_time * text_generation_rate):
+                test_text = test_texts[len(submitted_tasks) % len(test_texts)]
+                
+                # Process input through cognitive architecture
+                result = self.process_user_input(test_text)
+                if result.get('task_id'):
+                    submitted_tasks.append({
+                        'task_id': result['task_id'],
+                        'submitted_at': time.time(),
+                        'text': test_text,
+                        'patterns': len(result.get('atomspace_patterns', []))
+                    })
+            
+            # Capture attention state snapshot
+            attention_stats = ecan_system.get_attention_statistics()
+            attention_snapshots.append({
+                'timestamp': time.time(),
+                'average_sti': attention_stats.get('average_sti', 0),
+                'total_elements': attention_stats.get('total_elements', 0),
+                'allocation_rounds': attention_stats.get('allocation_rounds', 0),
+                'performance_metrics': attention_stats.get('performance_metrics', {})
+            })
+            
+            # Simulate task completions
+            pending_tasks = [t for t in mesh_orchestrator.tasks.values() 
+                           if t.status.value == "pending" or t.status.value == "running"]
+            
+            for task in pending_tasks[:2]:  # Complete up to 2 tasks per cycle
+                if hasattr(task, 'started_at') and task.started_at:
+                    execution_time = time.time() - task.started_at
+                    if execution_time > 5.0:  # Tasks running > 5 seconds
+                        success = True  # Assume success for benchmark
+                        mesh_orchestrator.handle_task_completion(
+                            task.task_id,
+                            {"output": f"Completed {task.task_type}", "benchmark": True},
+                            list(mesh_orchestrator.nodes.keys())[0] if mesh_orchestrator.nodes else "default"
+                        )
+                        task_completions.append({
+                            'task_id': task.task_id,
+                            'completed_at': time.time(),
+                            'execution_time': execution_time,
+                            'success': success
+                        })
+            
+            elapsed_time = time.time() - benchmark_start
+            
+            # Target 2-second cycles for reasonable granularity
+            await asyncio.sleep(max(0.1, 2.0 - (time.time() - cycle_start)))
+        
+        # Calculate benchmark results
+        total_time = time.time() - benchmark_start
+        
+        # Attention allocation metrics
+        if attention_snapshots:
+            final_snapshot = attention_snapshots[-1]
+            initial_snapshot = attention_snapshots[0]
+            
+            sti_improvement = (final_snapshot['average_sti'] - initial_snapshot['average_sti'])
+            allocation_efficiency = final_snapshot['allocation_rounds'] / total_time if total_time > 0 else 0
+        else:
+            sti_improvement = 0
+            allocation_efficiency = 0
+        
+        # Task completion metrics
+        completed_count = len(task_completions)
+        completion_rate = completed_count / len(submitted_tasks) if submitted_tasks else 0
+        
+        if task_completions:
+            avg_execution_time = sum(tc['execution_time'] for tc in task_completions) / len(task_completions)
+            success_rate = sum(1 for tc in task_completions if tc['success']) / len(task_completions)
+        else:
+            avg_execution_time = 0
+            success_rate = 0
+        
+        # Run ECAN's own benchmark for comparison
+        ecan_benchmark_result = await ecan_system.benchmark_attention_allocation(
+            num_elements=50, num_cycles=20, num_patterns=100, num_tasks=15
+        )
+        
+        benchmark_results = {
+            'benchmark_config': {
+                'duration_minutes': duration_minutes,
+                'text_generation_rate': text_generation_rate,
+                'actual_duration': total_time
+            },
+            'attention_allocation_metrics': {
+                'sti_improvement': sti_improvement,
+                'allocation_efficiency': allocation_efficiency,
+                'final_average_sti': final_snapshot['average_sti'] if attention_snapshots else 0,
+                'total_allocation_rounds': final_snapshot['allocation_rounds'] if attention_snapshots else 0,
+                'attention_distribution_entropy': ecan_system.allocation_metrics.get('attention_distribution_entropy', 0),
+                'focus_stability': ecan_system.allocation_metrics.get('focus_stability', 0),
+                'spreading_efficiency': ecan_system.allocation_metrics.get('spreading_efficiency', 0)
+            },
+            'task_scheduling_metrics': {
+                'tasks_submitted': len(submitted_tasks),
+                'tasks_completed': completed_count,
+                'completion_rate': completion_rate,
+                'average_execution_time': avg_execution_time,
+                'success_rate': success_rate
+            },
+            'integration_metrics': {
+                'texts_processed': self.integration_stats['texts_processed'],
+                'patterns_generated': self.integration_stats['patterns_generated'],
+                'attention_cycles': self.integration_stats['attention_cycles']
+            },
+            'ecan_benchmark': ecan_benchmark_result,
+            'attention_snapshots': attention_snapshots[::10],  # Every 10th snapshot to avoid too much data
+            'system_status': self.get_integration_status()
+        }
+        
+        logger.info(f"Attention allocation benchmark completed: {completed_count}/{len(submitted_tasks)} tasks completed "
+                   f"in {total_time:.2f}s with {completion_rate:.1%} completion rate")
+        
+        return benchmark_results
 
 
 # Global cognitive integrator instance

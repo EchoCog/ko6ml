@@ -160,7 +160,7 @@ class DistributedTask:
 class CognitiveMeshOrchestrator:
     """Orchestrates distributed cognitive tasks across the mesh"""
     
-    def __init__(self):
+    def __init__(self, ecan_system=None):
         self.nodes: Dict[str, MeshNode] = {}
         self.tasks: Dict[str, DistributedTask] = {}
         self.task_queue: List[DistributedTask] = []
@@ -168,13 +168,20 @@ class CognitiveMeshOrchestrator:
         self.websocket_connections: Dict[str, Any] = {}
         self.event_handlers: Dict[str, List[Callable]] = {}
         self.is_running = False
+        
+        # ECAN integration
+        self.ecan_system = ecan_system
+        self.attention_based_scheduling = True
+        
         self.orchestration_stats = {
             'tasks_completed': 0,
             'tasks_failed': 0,
             'total_processing_time': 0.0,
             'average_processing_time': 0.0,
             'nodes_online': 0,
-            'mesh_load': 0.0
+            'mesh_load': 0.0,
+            'attention_influenced_tasks': 0,
+            'average_attention_priority': 5.0
         }
         
         # Start background tasks
@@ -231,10 +238,43 @@ class CognitiveMeshOrchestrator:
     def submit_task(self, task: DistributedTask) -> str:
         """Submit a new task to the mesh"""
         self.tasks[task.task_id] = task
+        
+        # Integrate with ECAN attention system if available
+        if self.ecan_system and self.attention_based_scheduling:
+            # Register task with ECAN for attention-based scheduling
+            element_id = f"task_{task.task_type}_{task.task_id}"
+            
+            # Register element if not already registered
+            if element_id not in self.ecan_system.element_attention:
+                self.ecan_system.register_cognitive_element(element_id)
+            
+            # Register task-attention mapping
+            self.ecan_system.register_task_attention_mapping(task.task_id, element_id)
+            
+            # Update task priority based on attention
+            attention_priority = self.ecan_system.get_task_attention_priority(task.task_id)
+            task.priority = max(task.priority, int(attention_priority))
+            
+            self.orchestration_stats['attention_influenced_tasks'] += 1
+            
+            # Register AtomSpace patterns if payload contains text
+            if 'text' in task.payload:
+                # Create simple AtomSpace patterns from task text
+                patterns = [
+                    f'(ConceptNode "Task_{task.task_type}")',
+                    f'(PredicateNode "execute")',
+                    f'(EvaluationLink (PredicateNode "has_payload") (ConceptNode "Task_{task.task_id}"))'
+                ]
+                for pattern in patterns:
+                    self.ecan_system.register_atomspace_pattern(element_id, pattern)
+        
         self.task_queue.append(task)
         
-        # Sort by priority (higher priority first)
-        self.task_queue.sort(key=lambda t: t.priority, reverse=True)
+        # Sort by priority (higher priority first), with attention-based priorities taking precedence
+        self.task_queue.sort(key=lambda t: (
+            self.ecan_system.get_task_attention_priority(t.task_id) if self.ecan_system else t.priority,
+            t.priority
+        ), reverse=True)
         
         logger.info(f"Submitted task: {task.task_id} (type: {task.task_type}, priority: {task.priority})")
         return task.task_id
@@ -410,7 +450,21 @@ class CognitiveMeshOrchestrator:
         """Handle task completion from a node"""
         if task_id in self.tasks:
             task = self.tasks[task_id]
+            execution_time = time.time() - (task.started_at or time.time())
             task.complete_execution(result)
+            
+            # Update ECAN attention based on task completion
+            if self.ecan_system:
+                self.ecan_system.update_task_attention_from_completion(task_id, True, execution_time)
+                
+                # Update urgency for related tasks of the same type
+                for other_task_id, other_task in self.tasks.items():
+                    if (other_task.task_type == task.task_type and 
+                        other_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]):
+                        element_id = f"task_{other_task.task_type}_{other_task_id}"
+                        if element_id in self.ecan_system.element_attention:
+                            # Successful completion reduces urgency for similar pending tasks
+                            self.ecan_system.element_attention[element_id].urgency *= 0.9
             
             # Update node load
             if node_id in self.nodes:
@@ -419,22 +473,48 @@ class CognitiveMeshOrchestrator:
             
             # Move to completed tasks
             self.completed_tasks.append(task)
+            
+            # Update statistics
+            self.orchestration_stats['tasks_completed'] += 1
+            if execution_time > 0:
+                total_time = self.orchestration_stats['total_processing_time']
+                completed_count = self.orchestration_stats['tasks_completed']
+                self.orchestration_stats['total_processing_time'] = total_time + execution_time
+                self.orchestration_stats['average_processing_time'] = (
+                    self.orchestration_stats['total_processing_time'] / completed_count
+                )
             
             # Notify requester if needed
             if task.requester_node and task.requester_node in self.nodes:
                 self._send_message_to_node(task.requester_node, {
                     'type': 'task_completed',
                     'task_id': task_id,
-                    'result': result
+                    'result': result,
+                    'execution_time': execution_time
                 })
             
-            logger.info(f"Task {task_id} completed by node {node_id}")
+            logger.info(f"Task {task_id} completed by node {node_id} in {execution_time:.2f}s")
     
     def handle_task_failure(self, task_id: str, error: str, node_id: str):
         """Handle task failure from a node"""
         if task_id in self.tasks:
             task = self.tasks[task_id]
+            execution_time = time.time() - (task.started_at or time.time())
             task.fail_execution(error)
+            
+            # Update ECAN attention based on task failure
+            if self.ecan_system:
+                self.ecan_system.update_task_attention_from_completion(task_id, False, execution_time)
+                
+                # Increase urgency for related tasks of the same type
+                for other_task_id, other_task in self.tasks.items():
+                    if (other_task.task_type == task.task_type and 
+                        other_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]):
+                        element_id = f"task_{other_task.task_type}_{other_task_id}"
+                        if element_id in self.ecan_system.element_attention:
+                            # Failure increases urgency for similar pending tasks
+                            self.ecan_system.element_attention[element_id].urgency = min(1.0,
+                                self.ecan_system.element_attention[element_id].urgency + 0.2)
             
             # Update node load
             if node_id in self.nodes:
@@ -444,19 +524,34 @@ class CognitiveMeshOrchestrator:
             # Move to completed tasks
             self.completed_tasks.append(task)
             
+            # Update statistics
+            self.orchestration_stats['tasks_failed'] += 1
+            
             # Notify requester if needed
             if task.requester_node and task.requester_node in self.nodes:
                 self._send_message_to_node(task.requester_node, {
                     'type': 'task_failed',
                     'task_id': task_id,
-                    'error': error
+                    'error': error,
+                    'execution_time': execution_time
                 })
             
-            logger.error(f"Task {task_id} failed on node {node_id}: {error}")
+            logger.error(f"Task {task_id} failed on node {node_id} after {execution_time:.2f}s: {error}")
     
     def get_mesh_status(self) -> Dict[str, Any]:
         """Get comprehensive mesh status"""
-        return {
+        # Update attention-based statistics if ECAN is available
+        if self.ecan_system:
+            attention_priorities = []
+            for task_id in self.task_attention_mapping if hasattr(self, 'task_attention_mapping') else []:
+                priority = self.ecan_system.get_task_attention_priority(task_id)
+                attention_priorities.append(priority)
+            
+            if attention_priorities:
+                avg_attention_priority = sum(attention_priorities) / len(attention_priorities)
+                self.orchestration_stats['average_attention_priority'] = avg_attention_priority
+        
+        status = {
             'nodes': {node_id: node.to_dict() for node_id, node in self.nodes.items()},
             'tasks': {
                 'pending': len(self.task_queue),
@@ -467,6 +562,21 @@ class CognitiveMeshOrchestrator:
             'statistics': self.orchestration_stats,
             'timestamp': time.time()
         }
+        
+        # Add ECAN integration status if available
+        if self.ecan_system:
+            ecan_stats = self.ecan_system.get_attention_statistics()
+            status['ecan_integration'] = {
+                'attention_based_scheduling': self.attention_based_scheduling,
+                'total_attention_elements': ecan_stats['total_elements'],
+                'total_attention_patterns': ecan_stats['total_patterns'],
+                'total_attention_tasks': ecan_stats['total_tasks'],
+                'attention_allocation_rounds': ecan_stats['allocation_rounds'],
+                'average_sti': ecan_stats['average_sti'],
+                'performance_metrics': ecan_stats['performance_metrics']
+            }
+        
+        return status
     
     def get_node_performance(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Get performance metrics for a specific node"""
@@ -516,6 +626,13 @@ class CognitiveMeshOrchestrator:
 
 # Global mesh orchestrator instance
 mesh_orchestrator = CognitiveMeshOrchestrator()
+
+# Set up ECAN integration - will be connected when both systems are initialized
+def setup_ecan_integration():
+    """Set up ECAN integration for the mesh orchestrator"""
+    from ..ecan_attention.attention_kernel import ecan_system
+    mesh_orchestrator.ecan_system = ecan_system
+    logger.info("ECAN integration configured for mesh orchestrator")
 
 # Create some default nodes for testing
 default_agent = MeshNode(

@@ -141,6 +141,23 @@ class EconomicAttentionNetwork:
         # Priority queue for focus management
         self.focus_priority_queue = []
         
+        # AtomSpace integration
+        self.atomspace_patterns: Dict[str, List[str]] = {}  # element_id -> patterns
+        self.pattern_attention: Dict[str, float] = {}  # pattern -> attention weight
+        
+        # Task scheduling integration
+        self.task_attention_mapping: Dict[str, str] = {}  # task_id -> element_id
+        self.attention_based_priorities: Dict[str, float] = {}  # task_id -> priority
+        
+        # Performance metrics
+        self.allocation_metrics = {
+            'total_cycles': 0,
+            'average_cycle_time': 0.0,
+            'attention_distribution_entropy': 0.0,
+            'focus_stability': 0.0,
+            'spreading_efficiency': 0.0
+        }
+        
     def register_cognitive_element(self, element_id: str, initial_attention: Optional[AttentionValue] = None):
         """Register a new cognitive element for attention tracking"""
         if initial_attention is None:
@@ -148,6 +165,85 @@ class EconomicAttentionNetwork:
         
         self.element_attention[element_id] = initial_attention
         logger.info(f"Registered cognitive element: {element_id}")
+    
+    def register_atomspace_pattern(self, element_id: str, pattern: str, attention_weight: float = 1.0):
+        """Register an AtomSpace pattern associated with a cognitive element"""
+        if element_id not in self.atomspace_patterns:
+            self.atomspace_patterns[element_id] = []
+        
+        self.atomspace_patterns[element_id].append(pattern)
+        self.pattern_attention[pattern] = attention_weight
+        
+        # Boost attention for elements with AtomSpace patterns
+        if element_id in self.element_attention:
+            self.element_attention[element_id].novelty = min(1.0, 
+                self.element_attention[element_id].novelty + 0.1)
+        
+        logger.debug(f"Registered AtomSpace pattern for {element_id}: {pattern[:50]}...")
+    
+    def spread_to_atomspace_patterns(self, element_id: str) -> Dict[str, float]:
+        """Spread activation to related AtomSpace patterns"""
+        if element_id not in self.atomspace_patterns:
+            return {}
+        
+        element_attention = self.element_attention.get(element_id)
+        if not element_attention or element_attention.sti < self.spread_threshold:
+            return {}
+        
+        spread_results = {}
+        patterns = self.atomspace_patterns[element_id]
+        
+        # Calculate spread amount based on pattern relevance
+        total_spread = element_attention.sti * self.max_spread_percentage
+        pattern_weights = [self.pattern_attention.get(p, 1.0) for p in patterns]
+        total_weight = sum(pattern_weights)
+        
+        if total_weight == 0:
+            return {}
+        
+        for pattern, weight in zip(patterns, pattern_weights):
+            spread_amount = (weight / total_weight) * total_spread
+            
+            # Find elements connected to this pattern
+            connected_elements = []
+            for elem_id, elem_patterns in self.atomspace_patterns.items():
+                if elem_id != element_id and pattern in elem_patterns:
+                    connected_elements.append(elem_id)
+            
+            # Spread to connected elements
+            for connected_elem in connected_elements:
+                if connected_elem in self.element_attention:
+                    spread_per_element = spread_amount / len(connected_elements)
+                    
+                    # Transfer attention
+                    self.element_attention[connected_elem].sti = min(1.0,
+                        self.element_attention[connected_elem].sti + spread_per_element)
+                    
+                    spread_results[connected_elem] = spread_per_element
+            
+            # Reduce source attention
+            element_attention.sti = max(0.0, element_attention.sti - spread_amount)
+        
+        return spread_results
+    
+    def get_pattern_activation_levels(self) -> Dict[str, float]:
+        """Get activation levels for all registered AtomSpace patterns"""
+        pattern_activations = {}
+        
+        for element_id, patterns in self.atomspace_patterns.items():
+            if element_id in self.element_attention:
+                element_attention = self.element_attention[element_id].get_composite_attention()
+                
+                for pattern in patterns:
+                    pattern_weight = self.pattern_attention.get(pattern, 1.0)
+                    activation = element_attention * pattern_weight
+                    
+                    if pattern in pattern_activations:
+                        pattern_activations[pattern] = max(pattern_activations[pattern], activation)
+                    else:
+                        pattern_activations[pattern] = activation
+        
+        return pattern_activations
     
     def create_attention_focus(self, focus_id: str, element_ids: Set[str]) -> str:
         """Create a new attention focus"""
@@ -165,6 +261,70 @@ class EconomicAttentionNetwork:
         """Add a spreading activation link between cognitive elements"""
         self.spreading_activation_graph[source_id].append((target_id, weight))
         logger.debug(f"Added spreading link: {source_id} -> {target_id} (weight: {weight})")
+    
+    def register_task_attention_mapping(self, task_id: str, element_id: str):
+        """Register mapping between a task and cognitive element for attention-based scheduling"""
+        self.task_attention_mapping[task_id] = element_id
+        
+        # Calculate initial attention-based priority
+        if element_id in self.element_attention:
+            priority = self.element_attention[element_id].get_composite_attention()
+            self.attention_based_priorities[task_id] = priority * 10  # Scale to 0-10 range
+        
+        logger.debug(f"Registered task-attention mapping: {task_id} -> {element_id}")
+    
+    def get_task_attention_priority(self, task_id: str) -> float:
+        """Get attention-based priority for a task"""
+        if task_id not in self.task_attention_mapping:
+            return 5.0  # Default priority
+        
+        element_id = self.task_attention_mapping[task_id]
+        if element_id not in self.element_attention:
+            return 5.0
+        
+        attention = self.element_attention[element_id].get_composite_attention()
+        
+        # Include urgency boost
+        urgency_boost = self.element_attention[element_id].urgency * 2.0
+        
+        # Include novelty boost  
+        novelty_boost = self.element_attention[element_id].novelty * 1.5
+        
+        # Calculate priority (0-10 scale)
+        priority = (attention + urgency_boost + novelty_boost) * 10 / 3
+        return min(10.0, max(1.0, priority))
+    
+    def update_task_attention_from_completion(self, task_id: str, success: bool, execution_time: float):
+        """Update attention based on task completion results"""
+        if task_id not in self.task_attention_mapping:
+            return
+        
+        element_id = self.task_attention_mapping[task_id]
+        if element_id not in self.element_attention:
+            return
+        
+        attention = self.element_attention[element_id]
+        
+        if success:
+            # Successful completion increases LTI and confidence
+            attention.lti = min(1.0, attention.lti + 0.05)
+            attention.confidence = min(1.0, attention.confidence + 0.1)
+            
+            # Fast completion increases STI
+            if execution_time < 30.0:  # Fast completion
+                attention.sti = min(1.0, attention.sti + 0.1)
+        else:
+            # Failure decreases confidence and STI
+            attention.confidence = max(0.0, attention.confidence - 0.1)
+            attention.sti = max(0.0, attention.sti - 0.05)
+        
+        # Update urgency based on execution time
+        if execution_time > 60.0:  # Slow execution
+            attention.urgency = min(1.0, attention.urgency + 0.1)
+        else:
+            attention.urgency = max(0.0, attention.urgency - 0.05)
+        
+        logger.debug(f"Updated attention for task {task_id} completion: success={success}, time={execution_time}s")
     
     def allocate_sti_budget(self) -> Dict[str, float]:
         """Allocate STI budget across cognitive elements"""
@@ -311,6 +471,7 @@ class EconomicAttentionNetwork:
     
     async def run_attention_cycle(self):
         """Run one complete attention allocation cycle"""
+        cycle_start_time = time.time()
         self.allocation_round += 1
         
         # 1. Allocate STI budget
@@ -319,34 +480,109 @@ class EconomicAttentionNetwork:
         # 2. Allocate LTI budget
         lti_allocation = self.allocate_lti_budget()
         
-        # 3. Spread activation
+        # 3. Spread activation within cognitive elements
         spread_results = {}
         for element_id in list(self.element_attention.keys()):
             if self.element_attention[element_id].sti > self.spread_threshold:
                 spread_results[element_id] = self.spread_activation(element_id)
         
-        # 4. Select attention foci
+        # 4. Spread activation to AtomSpace patterns
+        atomspace_spread_results = {}
+        for element_id in list(self.element_attention.keys()):
+            if self.element_attention[element_id].sti > self.spread_threshold:
+                atomspace_spread_results[element_id] = self.spread_to_atomspace_patterns(element_id)
+        
+        # 5. Update task priorities based on current attention
+        updated_task_priorities = {}
+        for task_id in self.task_attention_mapping.keys():
+            new_priority = self.get_task_attention_priority(task_id)
+            old_priority = self.attention_based_priorities.get(task_id, 5.0)
+            self.attention_based_priorities[task_id] = new_priority
+            
+            if abs(new_priority - old_priority) > 0.1:  # Significant change
+                updated_task_priorities[task_id] = {
+                    'old_priority': old_priority,
+                    'new_priority': new_priority,
+                    'change': new_priority - old_priority
+                }
+        
+        # 6. Select attention foci
         selected_foci = self.select_attention_foci()
         
-        # 5. Apply temporal decay
+        # 7. Apply temporal decay
         self.apply_temporal_decay()
         
-        # 6. Record allocation history
+        # 8. Calculate performance metrics
+        cycle_time = time.time() - cycle_start_time
+        self._update_performance_metrics(cycle_time, sti_allocation, spread_results)
+        
+        # 9. Record allocation history
         allocation_record = {
             'round': self.allocation_round,
             'timestamp': time.time(),
+            'cycle_time': cycle_time,
             'sti_allocation': sti_allocation,
             'lti_allocation': lti_allocation,
             'spread_results': spread_results,
+            'atomspace_spread_results': atomspace_spread_results,
+            'updated_task_priorities': updated_task_priorities,
             'selected_foci': selected_foci,
             'total_sti_allocated': self.current_sti_allocation,
-            'active_elements': len(self.element_attention)
+            'active_elements': len(self.element_attention),
+            'active_patterns': len(self.pattern_attention),
+            'active_tasks': len(self.task_attention_mapping),
+            'performance_metrics': self.allocation_metrics.copy()
         }
         
         self.resource_allocation_history.append(allocation_record)
         
-        logger.debug(f"Completed attention cycle {self.allocation_round}")
+        logger.debug(f"Completed attention cycle {self.allocation_round} in {cycle_time:.3f}s")
         return allocation_record
+    
+    def _update_performance_metrics(self, cycle_time: float, sti_allocation: Dict[str, float], spread_results: Dict[str, Dict[str, float]]):
+        """Update performance metrics for attention allocation"""
+        self.allocation_metrics['total_cycles'] += 1
+        
+        # Update average cycle time
+        old_avg = self.allocation_metrics['average_cycle_time']
+        total_cycles = self.allocation_metrics['total_cycles']
+        self.allocation_metrics['average_cycle_time'] = (old_avg * (total_cycles - 1) + cycle_time) / total_cycles
+        
+        # Calculate attention distribution entropy
+        if sti_allocation:
+            total_allocation = sum(sti_allocation.values())
+            if total_allocation > 0:
+                probabilities = [amount / total_allocation for amount in sti_allocation.values()]
+                entropy = -sum(p * math.log2(p) if p > 0 else 0 for p in probabilities)
+                self.allocation_metrics['attention_distribution_entropy'] = entropy
+        
+        # Calculate focus stability (how consistent are the top attention elements)
+        if len(self.resource_allocation_history) > 5:
+            recent_allocations = list(self.resource_allocation_history)[-5:]
+            
+            # Get top 3 elements from each recent allocation
+            top_elements_history = []
+            for record in recent_allocations:
+                if record['sti_allocation']:
+                    top_3 = sorted(record['sti_allocation'].items(), key=lambda x: x[1], reverse=True)[:3]
+                    top_elements_history.append(set(elem for elem, _ in top_3))
+            
+            # Calculate stability as intersection size
+            if top_elements_history:
+                intersection = set.intersection(*top_elements_history) if len(top_elements_history) > 1 else top_elements_history[0]
+                stability = len(intersection) / 3.0  # Normalized by top-3 size
+                self.allocation_metrics['focus_stability'] = stability
+        
+        # Calculate spreading efficiency
+        total_spread_amount = 0
+        total_spread_targets = 0
+        for source_results in spread_results.values():
+            total_spread_amount += sum(source_results.values())
+            total_spread_targets += len(source_results)
+        
+        if total_spread_targets > 0:
+            avg_spread_per_target = total_spread_amount / total_spread_targets
+            self.allocation_metrics['spreading_efficiency'] = avg_spread_per_target
     
     def get_attention_statistics(self) -> Dict[str, Any]:
         """Get comprehensive attention allocation statistics"""
@@ -363,18 +599,33 @@ class EconomicAttentionNetwork:
             reverse=True
         )[:10]
         
+        # Get pattern activation statistics
+        pattern_activations = self.get_pattern_activation_levels()
+        top_patterns = sorted(pattern_activations.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        # Get task priority statistics
+        task_priorities = list(self.attention_based_priorities.values())
+        avg_task_priority = sum(task_priorities) / len(task_priorities) if task_priorities else 5.0
+        
         return {
             'total_elements': len(self.element_attention),
             'total_foci': len(self.attention_foci),
+            'total_patterns': len(self.pattern_attention),
+            'total_tasks': len(self.task_attention_mapping),
             'total_sti': total_sti,
             'total_lti': total_lti,
             'average_sti': avg_sti,
             'average_lti': avg_lti,
+            'average_task_priority': avg_task_priority,
             'allocation_rounds': self.allocation_round,
             'sti_budget_utilization': self.current_sti_allocation / self.total_sti_budget,
             'top_elements': [(elem_id, av.to_dict()) for elem_id, av in top_elements],
+            'top_patterns': [(pattern[:50] + '...', activation) for pattern, activation in top_patterns],
             'active_foci': len([f for f in self.attention_foci.values() 
-                              if f.attention_value.get_composite_attention() > 0.1])
+                              if f.attention_value.get_composite_attention() > 0.1]),
+            'performance_metrics': self.allocation_metrics,
+            'spreading_graph_size': len(self.spreading_activation_graph),
+            'total_spreading_links': sum(len(targets) for targets in self.spreading_activation_graph.values())
         }
     
     async def start_attention_loop(self, cycle_interval: float = 0.1):
@@ -388,6 +639,149 @@ class EconomicAttentionNetwork:
             except Exception as e:
                 logger.error(f"Error in attention cycle: {e}")
                 await asyncio.sleep(cycle_interval)
+    
+    async def benchmark_attention_allocation(self, num_elements: int = 100, num_cycles: int = 50, 
+                                           num_patterns: int = 200, num_tasks: int = 30) -> Dict[str, Any]:
+        """Benchmark attention allocation performance across multiple agents and tasks"""
+        logger.info(f"Starting attention allocation benchmark: {num_elements} elements, {num_cycles} cycles")
+        
+        benchmark_start = time.time()
+        
+        # Register benchmark elements
+        benchmark_elements = []
+        for i in range(num_elements):
+            element_id = f"benchmark_element_{i}"
+            attention = AttentionValue(
+                sti=np.random.random() * 0.8 + 0.1,  # 0.1 to 0.9
+                lti=np.random.random() * 0.6 + 0.2,  # 0.2 to 0.8
+                urgency=np.random.random() * 0.5,     # 0.0 to 0.5
+                novelty=np.random.random() * 0.3      # 0.0 to 0.3
+            )
+            self.register_cognitive_element(element_id, attention)
+            benchmark_elements.append(element_id)
+        
+        # Register benchmark AtomSpace patterns
+        pattern_templates = [
+            "(ConceptNode \"Element_{i}\")",
+            "(PredicateNode \"process_{i}\")",
+            "(EvaluationLink (PredicateNode \"relates\") (ListLink (ConceptNode \"Element_{i}\") (ConceptNode \"Element_{j}\")))",
+            "(ImplicationLink (ConceptNode \"Input_{i}\") (ConceptNode \"Output_{i}\"))"
+        ]
+        
+        for i in range(num_patterns):
+            element_id = benchmark_elements[i % len(benchmark_elements)]
+            pattern = pattern_templates[i % len(pattern_templates)].format(i=i, j=(i+1) % num_elements)
+            self.register_atomspace_pattern(element_id, pattern, np.random.random())
+        
+        # Register benchmark tasks
+        for i in range(num_tasks):
+            task_id = f"benchmark_task_{i}"
+            element_id = benchmark_elements[i % len(benchmark_elements)]
+            self.register_task_attention_mapping(task_id, element_id)
+        
+        # Add spreading links between elements
+        for i in range(num_elements):
+            source = benchmark_elements[i]
+            for j in range(min(5, num_elements - 1)):  # Each element connects to up to 5 others
+                target_idx = (i + j + 1) % num_elements
+                target = benchmark_elements[target_idx]
+                weight = np.random.random() * 0.8 + 0.2  # 0.2 to 1.0
+                self.add_spreading_link(source, target, weight)
+        
+        # Run benchmark cycles
+        cycle_times = []
+        allocation_distributions = []
+        
+        for cycle in range(num_cycles):
+            cycle_start = time.time()
+            
+            # Run attention cycle
+            allocation_result = await self.run_attention_cycle()
+            
+            cycle_end = time.time()
+            cycle_time = cycle_end - cycle_start
+            cycle_times.append(cycle_time)
+            
+            # Track allocation distribution
+            if allocation_result['sti_allocation']:
+                allocations = list(allocation_result['sti_allocation'].values())
+                allocation_distributions.append({
+                    'mean': np.mean(allocations),
+                    'std': np.std(allocations),
+                    'min': np.min(allocations),
+                    'max': np.max(allocations)
+                })
+            
+            # Simulate some task completions
+            if cycle % 10 == 0:  # Every 10 cycles
+                for i in range(min(5, num_tasks)):
+                    task_id = f"benchmark_task_{i}"
+                    success = np.random.random() > 0.2  # 80% success rate
+                    exec_time = np.random.exponential(30.0)  # Exponential distribution
+                    self.update_task_attention_from_completion(task_id, success, exec_time)
+        
+        benchmark_end = time.time()
+        total_benchmark_time = benchmark_end - benchmark_start
+        
+        # Calculate benchmark statistics
+        avg_cycle_time = np.mean(cycle_times)
+        cycle_time_std = np.std(cycle_times)
+        min_cycle_time = np.min(cycle_times)
+        max_cycle_time = np.max(cycle_times)
+        
+        # Calculate allocation fairness (Gini coefficient)
+        final_attentions = [av.sti for av in self.element_attention.values()]
+        gini_coefficient = self._calculate_gini_coefficient(final_attentions)
+        
+        # Calculate convergence metrics
+        early_allocation = allocation_distributions[num_cycles // 4] if allocation_distributions else {}
+        late_allocation = allocation_distributions[-1] if allocation_distributions else {}
+        
+        convergence_stability = 0.0
+        if early_allocation and late_allocation:
+            mean_change = abs(late_allocation['mean'] - early_allocation['mean'])
+            std_change = abs(late_allocation['std'] - early_allocation['std'])
+            convergence_stability = 1.0 / (1.0 + mean_change + std_change)
+        
+        benchmark_results = {
+            'benchmark_config': {
+                'num_elements': num_elements,
+                'num_cycles': num_cycles,
+                'num_patterns': num_patterns,
+                'num_tasks': num_tasks
+            },
+            'timing_metrics': {
+                'total_benchmark_time': total_benchmark_time,
+                'average_cycle_time': avg_cycle_time,
+                'cycle_time_std': cycle_time_std,
+                'min_cycle_time': min_cycle_time,
+                'max_cycle_time': max_cycle_time,
+                'cycles_per_second': num_cycles / total_benchmark_time
+            },
+            'allocation_metrics': {
+                'final_gini_coefficient': gini_coefficient,
+                'convergence_stability': convergence_stability,
+                'allocation_distributions': allocation_distributions[:5] + allocation_distributions[-5:],  # First and last 5
+            },
+            'system_metrics': self.get_attention_statistics(),
+            'performance_history': list(self.resource_allocation_history)[-10:]  # Last 10 cycles
+        }
+        
+        logger.info(f"Benchmark completed in {total_benchmark_time:.2f}s, avg cycle time: {avg_cycle_time:.4f}s")
+        return benchmark_results
+    
+    def _calculate_gini_coefficient(self, values: List[float]) -> float:
+        """Calculate Gini coefficient for attention distribution fairness"""
+        if not values or len(values) < 2:
+            return 0.0
+        
+        sorted_values = sorted(values)
+        n = len(sorted_values)
+        cumsum = np.cumsum(sorted_values)
+        
+        # Calculate Gini coefficient
+        gini = (n + 1 - 2 * sum((n + 1 - i) * v for i, v in enumerate(sorted_values, 1))) / (n * sum(sorted_values))
+        return max(0.0, min(1.0, gini))  # Ensure valid range
 
 
 # Global ECAN instance

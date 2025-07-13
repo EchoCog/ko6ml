@@ -115,13 +115,20 @@ python aiserver.py
 
 ## 📖 Documentation
 
-- **[Technical Documentation](TECHNICAL_DOCUMENTATION.md)** - Comprehensive technical reference
-- **[Phase 1 Documentation](docs/phase1/README.md)** - Cognitive primitives and hypergraph encoding
-- **[Phase 2 Documentation](PHASE2_COMPLETE.md)** - ECAN attention allocation system
-- **[Phase 3 Documentation](PHASE3_COMPLETE.md)** - Distributed mesh topology
-- **[Phase 4 Documentation](PHASE4_COMPLETE.md)** - KoboldAI integration
-- **[Phase 5 Documentation](PHASE5_COMPLETE.md)** - Advanced reasoning engines
-- **[Phase 6 Documentation](PHASE6_COMPLETE.md)** - Meta-cognitive learning
+### Core Documentation
+- **[Installation Guide](INSTALLATION_GUIDE.md)** - Complete setup and installation instructions
+- **[Technical Documentation](TECHNICAL_DOCUMENTATION.md)** - Comprehensive technical reference (18KB)
+- **[API Documentation](API_DOCUMENTATION.md)** - Complete API reference with examples (17KB)
+- **[Architecture Overview](ARCHITECTURE_OVERVIEW.md)** - Visual architecture overview with diagrams
+- **[Developer Guide](DEVELOPER_GUIDE.md)** - Contributing and development guide (27KB)
+
+### Phase-Specific Documentation
+- **[Phase 1: Cognitive Primitives](docs/phase1/README.md)** - AtomSpace hypergraph foundation
+- **[Phase 2: ECAN Attention](PHASE2_COMPLETE.md)** - Economic attention allocation system
+- **[Phase 3: Distributed Mesh](PHASE3_COMPLETE.md)** - Scalable distributed processing
+- **[Phase 4: KoboldAI Integration](PHASE4_COMPLETE.md)** - Seamless text generation integration
+- **[Phase 5: Advanced Reasoning](PHASE5_COMPLETE.md)** - Multi-modal cognitive reasoning
+- **[Phase 6: Meta-Cognitive Learning](PHASE6_COMPLETE.md)** - Self-aware adaptive optimization
 
 ## 💡 Usage Examples
 

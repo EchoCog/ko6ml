@@ -62,8 +62,7 @@ class KoboldCognitiveIntegrator:
             setup_ecan_integration()
             
             # Register default cognitive agent for KoboldAI
-            kobold_agent = CognitiveAgent()
-            kobold_agent.agent_id = "kobold_main_agent"
+            kobold_agent = CognitiveAgent(agent_id="kobold_main_agent")  # Set agent_id in constructor
             cognitive_core.register_agent(kobold_agent)
             
             # Register attention elements for KoboldAI components with enhanced ECAN features
@@ -241,8 +240,7 @@ class KoboldCognitiveIntegrator:
                 logger.warning("kobold_main_agent not found, creating new agent")
                 # Create the agent if it doesn't exist
                 from .core import CognitiveAgent
-                kobold_agent = CognitiveAgent()
-                kobold_agent.agent_id = "kobold_main_agent"
+                kobold_agent = CognitiveAgent(agent_id="kobold_main_agent")  # Set agent_id in constructor
                 cognitive_core.register_agent(kobold_agent)
                 kobold_agent.update_state(CognitiveState.ATTENDING)
             
@@ -277,6 +275,8 @@ class KoboldCognitiveIntegrator:
             
         except Exception as e:
             logger.error(f"Error processing user input: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {"error": str(e)}
     
     def process_model_output(self, generated_text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -312,7 +312,8 @@ class KoboldCognitiveIntegrator:
             else:
                 logger.warning("kobold_main_agent not found during output processing")
             
-            # Submit analysis task
+            # Submit analysis task and get enhanced output
+            enhanced_text = generated_text  # Default to original text
             task_id = None
             if self.settings['enable_distributed_processing']:
                 task = DistributedTask(
@@ -325,12 +326,21 @@ class KoboldCognitiveIntegrator:
                     priority=6
                 )
                 task_id = mesh_orchestrator.submit_task(task)
+                
+                # Apply attention-guided quality improvements
+                if context and 'generation_settings' in context:
+                    enhanced_text = self._apply_attention_guided_enhancements(
+                        generated_text, 
+                        context['generation_settings'],
+                        atomspace_patterns
+                    )
             
             self.integration_stats['texts_processed'] += 1
             self.integration_stats['patterns_generated'] += len(atomspace_patterns)
             
             return {
                 "atomspace_patterns": atomspace_patterns,
+                "enhanced_text": enhanced_text,
                 "task_id": task_id,
                 "attention_elements": self._get_attention_summary(),
                 "cognitive_state": self._get_cognitive_state(),
@@ -342,13 +352,16 @@ class KoboldCognitiveIntegrator:
             return {"error": str(e)}
     
     def update_context_memory(self, memory_content: str, importance: float = 0.5):
-        """Update context memory with attention allocation"""
+        """Update context memory with attention allocation and enhanced importance scoring"""
         try:
+            # Enhanced importance scoring based on cognitive analysis
+            enhanced_importance = self._calculate_enhanced_importance(memory_content, importance)
+            
             if self.settings['enable_attention_allocation']:
-                # Update LTI for context memory based on importance
+                # Update LTI for context memory based on enhanced importance
                 if "context_memory" in ecan_system.element_attention:
-                    ecan_system.element_attention["context_memory"].lti = min(1.0, importance)
-                    ecan_system.element_attention["context_memory"].sti = importance * 0.3
+                    ecan_system.element_attention["context_memory"].lti = min(1.0, enhanced_importance)
+                    ecan_system.element_attention["context_memory"].sti = enhanced_importance * 0.3
             
             # Translate memory content
             if self.settings['enable_scheme_translation'] and memory_content:
@@ -361,15 +374,15 @@ class KoboldCognitiveIntegrator:
                         payload={
                             "memory_content": memory_content,
                             "patterns": patterns,
-                            "importance": importance
+                            "importance": enhanced_importance
                         },
                         priority=4
                     )
                     mesh_orchestrator.submit_task(task)
                 
-                return {"patterns": patterns, "importance": importance}
+                return {"patterns": patterns, "enhanced_importance": enhanced_importance}
             
-            return {"importance": importance}
+            return {"enhanced_importance": enhanced_importance}
             
         except Exception as e:
             logger.error(f"Error updating context memory: {e}")
@@ -477,7 +490,7 @@ class KoboldCognitiveIntegrator:
                 "is_initialized": self.is_initialized,
                 "uptime_seconds": uptime,
                 "settings": self.settings,
-                "integration_stats": self.integration_stats,
+                "stats": self.integration_stats,  # Changed from integration_stats to stats
                 "cache_size": len(self.translation_cache),
                 "mesh_status": {
                     "nodes_online": mesh_status.get("statistics", {}).get("nodes_online", 0),
@@ -555,6 +568,99 @@ class KoboldCognitiveIntegrator:
             
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
+    
+    def _apply_attention_guided_enhancements(self, text: str, generation_settings: Dict[str, Any], 
+                                           patterns: List[str]) -> str:
+        """Apply attention-guided enhancements to generated text"""
+        try:
+            # Basic quality improvements based on attention allocation
+            enhanced_text = text
+            
+            # Get current attention state
+            attention_summary = self._get_attention_summary()
+            
+            # Apply coherence improvements if attention is focused on context
+            if attention_summary.get('context_memory', {}).get('sti', 0) > 0.7:
+                enhanced_text = self._improve_coherence(enhanced_text)
+            
+            # Apply repetition reduction if attention is high on user input
+            if attention_summary.get('user_input', {}).get('sti', 0) > 0.8:
+                enhanced_text = self._reduce_repetition(enhanced_text, generation_settings.get('rep_pen', 1.1))
+            
+            # Apply creativity boost if attention is distributed across multiple elements
+            active_elements = sum(1 for elem in attention_summary.values() 
+                                if isinstance(elem, dict) and elem.get('sti', 0) > 0.5)
+            if active_elements >= 3:
+                enhanced_text = self._boost_creativity(enhanced_text)
+            
+            return enhanced_text
+            
+        except Exception as e:
+            logger.error(f"Error applying attention-guided enhancements: {e}")
+            return text
+    
+    def _calculate_enhanced_importance(self, content: str, base_importance: float) -> float:
+        """Calculate enhanced importance score based on cognitive analysis"""
+        try:
+            # Base factors for importance scoring
+            importance_factors = {
+                'length': min(1.0, len(content) / 500),  # Longer content gets higher score up to a point
+                'complexity': min(1.0, len(content.split()) / 100),  # Word count factor
+                'novelty': self._calculate_novelty(content),
+                'relevance': base_importance
+            }
+            
+            # Weight the factors
+            weights = {'length': 0.2, 'complexity': 0.3, 'novelty': 0.3, 'relevance': 0.2}
+            
+            enhanced_score = sum(importance_factors[factor] * weights[factor] 
+                               for factor in importance_factors)
+            
+            # Ensure score is within valid range
+            return max(0.1, min(1.0, enhanced_score))
+            
+        except Exception as e:
+            logger.error(f"Error calculating enhanced importance: {e}")
+            return base_importance
+    
+    def _improve_coherence(self, text: str) -> str:
+        """Apply basic coherence improvements to text"""
+        # Simple coherence improvements (can be enhanced with more sophisticated NLP)
+        lines = text.split('\n')
+        improved_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if line:
+                # Basic sentence structure improvements
+                if not line.endswith('.') and not line.endswith('!') and not line.endswith('?'):
+                    if len(line) > 10:  # Only add period to substantial content
+                        line += '.'
+                improved_lines.append(line)
+        
+        return '\n'.join(improved_lines)
+    
+    def _reduce_repetition(self, text: str, rep_pen: float) -> str:
+        """Apply repetition reduction based on attention state"""
+        # Simple repetition reduction
+        words = text.split()
+        if len(words) <= 3:
+            return text
+            
+        # Remove consecutive repeated words
+        filtered_words = [words[0]]
+        for i in range(1, len(words)):
+            if words[i].lower() != words[i-1].lower():
+                filtered_words.append(words[i])
+        
+        return ' '.join(filtered_words)
+    
+    def _boost_creativity(self, text: str) -> str:
+        """Apply creativity boosts when attention is distributed"""
+        # Simple creativity enhancement (preserve original for now)
+        # In a more sophisticated implementation, this could use language models
+        # or pattern matching to suggest more creative alternatives
+        return text
     
     async def benchmark_attention_allocation(self, duration_minutes: int = 2, 
                                            text_generation_rate: float = 0.3) -> Dict[str, Any]:

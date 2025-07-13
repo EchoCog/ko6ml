@@ -15,6 +15,7 @@ import json
 import sys
 import time
 import logging
+import pytest
 from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,7 @@ def test_ecan_task_scheduling_integration():
     return True
 
 
+@pytest.mark.asyncio
 async def test_attention_allocation_benchmark():
     """Test benchmarking of attention allocation across distributed agents"""
     print("\n✅ Testing Attention Allocation Benchmarking")
@@ -232,6 +234,7 @@ async def test_attention_allocation_benchmark():
     return benchmark_results
 
 
+@pytest.mark.asyncio
 async def test_real_task_scheduling_flow():
     """Test real task scheduling with attention flow"""
     print("\n✅ Testing Real Task Scheduling with Attention Flow")
@@ -508,6 +511,7 @@ graph TD
     return topology_doc
 
 
+@pytest.mark.asyncio
 async def test_integration_performance():
     """Test integrated system performance"""
     print("\n✅ Testing Integrated System Performance")

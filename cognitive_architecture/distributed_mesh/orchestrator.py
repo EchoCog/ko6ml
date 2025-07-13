@@ -1,8 +1,8 @@
 """
-Distributed Cognitive Mesh API
+Enhanced Distributed Cognitive Mesh Orchestrator
 
-This module implements REST and WebSocket APIs for distributed agent state
-propagation and task orchestration across the cognitive network.
+This module implements advanced distributed agent orchestration with discovery,
+fault tolerance, auto-recovery, and comprehensive load testing capabilities.
 """
 
 import asyncio
@@ -158,7 +158,7 @@ class DistributedTask:
 
 
 class CognitiveMeshOrchestrator:
-    """Orchestrates distributed cognitive tasks across the mesh"""
+    """Enhanced orchestrator for distributed cognitive tasks with discovery, fault tolerance, and auto-recovery"""
     
     def __init__(self, ecan_system=None):
         self.nodes: Dict[str, MeshNode] = {}
@@ -173,6 +173,11 @@ class CognitiveMeshOrchestrator:
         self.ecan_system = ecan_system
         self.attention_based_scheduling = True
         
+        # Phase 3 enhancements: Discovery, fault tolerance, and load testing
+        self.discovery_service = None
+        self.fault_tolerance_manager = None
+        self.load_testing_framework = None
+        
         self.orchestration_stats = {
             'tasks_completed': 0,
             'tasks_failed': 0,
@@ -181,13 +186,230 @@ class CognitiveMeshOrchestrator:
             'nodes_online': 0,
             'mesh_load': 0.0,
             'attention_influenced_tasks': 0,
-            'average_attention_priority': 5.0
+            'average_attention_priority': 5.0,
+            # Phase 3 stats
+            'nodes_discovered': 0,
+            'auto_recoveries': 0,
+            'fault_detections': 0,
+            'load_tests_completed': 0
         }
         
         # Start background tasks
         self.executor = ThreadPoolExecutor(max_workers=10)
         # Don't start async tasks at module import time
         # self._start_background_tasks()
+    
+    def setup_phase3_components(self, discovery_service=None, fault_tolerance_manager=None, load_testing_framework=None):
+        """Setup Phase 3 components for enhanced mesh functionality"""
+        if discovery_service:
+            self.discovery_service = discovery_service
+            # Register discovery callback
+            self.discovery_service.add_discovery_callback(self._on_node_discovered)
+            logger.info("Discovery service integrated")
+        
+        if fault_tolerance_manager:
+            self.fault_tolerance_manager = fault_tolerance_manager
+            logger.info("Fault tolerance manager integrated")
+        
+        if load_testing_framework:
+            self.load_testing_framework = load_testing_framework
+            # Set references for load testing
+            self.load_testing_framework.mesh_orchestrator = self
+            self.load_testing_framework.fault_manager = self.fault_tolerance_manager
+            self.load_testing_framework.discovery_service = self.discovery_service
+            logger.info("Load testing framework integrated")
+    
+    def _on_node_discovered(self, node_advertisement):
+        """Callback for when a new node is discovered"""
+        from .discovery import NodeAdvertisement
+        
+        # Convert discovery advertisement to mesh node
+        mesh_node = MeshNode(
+            node_id=node_advertisement.node_id,
+            node_type=MeshNodeType(node_advertisement.node_type),
+            capabilities=node_advertisement.capabilities,
+            current_load=node_advertisement.current_load,
+            max_load=node_advertisement.load_capacity,
+            metadata=node_advertisement.metadata
+        )
+        
+        # Register the discovered node
+        self.register_node(mesh_node)
+        self.orchestration_stats['nodes_discovered'] += 1
+        
+        logger.info(f"Auto-registered discovered node: {node_advertisement.node_id}")
+    
+    async def start_enhanced_orchestration(self):
+        """Start enhanced orchestration with Phase 3 features"""
+        await self.start_orchestration()
+        
+        # Start discovery service
+        if self.discovery_service:
+            await self.discovery_service.start_discovery()
+        
+        # Start fault tolerance monitoring
+        if self.fault_tolerance_manager:
+            await self.fault_tolerance_manager.start_monitoring()
+            
+            # Register existing nodes for health monitoring
+            for node in self.nodes.values():
+                self.fault_tolerance_manager.register_node_health(node.node_id)
+        
+        logger.info("Enhanced orchestration started with Phase 3 features")
+    
+    async def stop_enhanced_orchestration(self):
+        """Stop enhanced orchestration"""
+        # Stop discovery service
+        if self.discovery_service:
+            await self.discovery_service.stop_discovery()
+        
+        # Stop fault tolerance monitoring
+        if self.fault_tolerance_manager:
+            await self.fault_tolerance_manager.stop_monitoring()
+        
+        # Stop standard orchestration
+        self.shutdown()
+        
+        logger.info("Enhanced orchestration stopped")
+    
+    def find_optimal_nodes_for_task(self, task: DistributedTask, max_nodes: int = 3) -> List[MeshNode]:
+        """Find optimal nodes for task execution using enhanced capability matching"""
+        if not self.discovery_service:
+            # Fallback to original node selection
+            return self._find_suitable_nodes_fallback(task, max_nodes)
+        
+        # Get required capabilities from task
+        required_capabilities = set()
+        if task.task_type in ['text_processing', 'dialogue']:
+            required_capabilities.add('text_processing')
+        elif task.task_type in ['neural_inference', 'reasoning']:
+            required_capabilities.update(['neural_inference', 'reasoning'])
+        elif task.task_type in ['attention_allocation']:
+            required_capabilities.add('attention_allocation')
+        else:
+            required_capabilities.add('general_processing')
+        
+        # Use discovery service for advanced capability matching
+        from .discovery import NodeAdvertisement
+        
+        # Convert mesh nodes to advertisements for capability matching
+        node_advertisements = []
+        for node in self.nodes.values():
+            if node.is_available():
+                advertisement = NodeAdvertisement(
+                    node_id=node.node_id,
+                    node_type=node.node_type.value,
+                    capabilities=node.capabilities,
+                    endpoint="",  # Not used for matching
+                    port=0,      # Not used for matching
+                    load_capacity=node.max_load,
+                    current_load=node.current_load
+                )
+                node_advertisements.append(advertisement)
+        
+        # Find optimal nodes
+        optimal_advertisements = self.discovery_service.find_nodes_for_capabilities(
+            required_capabilities, task.priority / 10.0, max_nodes
+        )
+        
+        # Convert back to mesh nodes
+        optimal_nodes = []
+        for advertisement in optimal_advertisements:
+            if advertisement.node_id in self.nodes:
+                optimal_nodes.append(self.nodes[advertisement.node_id])
+        
+        return optimal_nodes
+    
+    def _find_suitable_nodes_fallback(self, task: DistributedTask, max_nodes: int) -> List[MeshNode]:
+        """Fallback node selection when discovery service is not available"""
+        available_nodes = [
+            node for node in self.nodes.values()
+            if node.is_available() and node.can_handle_task(task.task_type)
+        ]
+        
+        if not available_nodes:
+            return []
+        
+        # Sort by load and capabilities
+        available_nodes.sort(key=lambda n: (n.current_load, -len(n.capabilities)))
+        return available_nodes[:max_nodes]
+    
+    def update_node_health_metrics(self, node_id: str, **metrics):
+        """Update health metrics for a node"""
+        if self.fault_tolerance_manager:
+            self.fault_tolerance_manager.update_node_health(node_id, **metrics)
+        
+        # Update node load based on health
+        if node_id in self.nodes:
+            node = self.nodes[node_id]
+            node.update_heartbeat()
+            
+            # Adjust load based on health metrics
+            if 'cpu_usage' in metrics and metrics['cpu_usage'] > 0.9:
+                node.current_load = min(node.max_load, node.current_load + 0.1)
+            elif 'cpu_usage' in metrics and metrics['cpu_usage'] < 0.3:
+                node.current_load = max(0.0, node.current_load - 0.05)
+    
+    async def run_load_test(self, config_name: str = 'quick_throughput') -> Dict[str, Any]:
+        """Run a load test on the mesh"""
+        if not self.load_testing_framework:
+            logger.error("Load testing framework not available")
+            return {'error': 'Load testing framework not configured'}
+        
+        from .load_testing import PREDEFINED_CONFIGS
+        
+        if config_name not in PREDEFINED_CONFIGS:
+            logger.error(f"Unknown load test config: {config_name}")
+            return {'error': f'Unknown config: {config_name}'}
+        
+        config = PREDEFINED_CONFIGS[config_name]
+        logger.info(f"Starting load test: {config.test_name}")
+        
+        try:
+            result = await self.load_testing_framework.run_load_test(config)
+            self.orchestration_stats['load_tests_completed'] += 1
+            return result
+        except Exception as e:
+            logger.error(f"Load test failed: {e}")
+            return {'error': str(e)}
+    
+    def get_enhanced_mesh_status(self) -> Dict[str, Any]:
+        """Get comprehensive mesh status including Phase 3 enhancements"""
+        base_status = self.get_mesh_status()
+        
+        # Add discovery service status
+        if self.discovery_service:
+            discovery_stats = self.discovery_service.get_discovery_statistics()
+            base_status['discovery'] = discovery_stats
+        
+        # Add fault tolerance status  
+        if self.fault_tolerance_manager:
+            health_summary = self.fault_tolerance_manager.get_health_summary()
+            failure_stats = self.fault_tolerance_manager.get_failure_statistics()
+            base_status['health'] = health_summary
+            base_status['fault_tolerance'] = failure_stats
+        
+        # Add load testing status
+        if self.load_testing_framework:
+            load_test_summary = self.load_testing_framework.get_test_summary()
+            base_status['load_testing'] = load_test_summary
+        
+        # Enhanced statistics
+        base_status['enhanced_statistics'] = self.orchestration_stats
+        
+        return base_status
+    
+    async def start_orchestration(self):
+        """Start standard orchestration (called by enhanced orchestration)"""
+        if not self.is_running:
+            self.is_running = True
+            try:
+                asyncio.create_task(self._orchestration_loop())
+                asyncio.create_task(self._heartbeat_monitor())
+                logger.info("Standard orchestration started")
+            except RuntimeError:
+                # No event loop running, tasks will be started manually
+                pass
     
     def _start_background_tasks(self):
         """Start background orchestration tasks"""
@@ -310,19 +532,9 @@ class CognitiveMeshOrchestrator:
         return False
     
     def _find_suitable_node(self, task: DistributedTask) -> Optional[MeshNode]:
-        """Find a suitable node for task execution"""
-        available_nodes = [
-            node for node in self.nodes.values()
-            if node.is_available() and node.can_handle_task(task.task_type)
-        ]
-        
-        if not available_nodes:
-            return None
-        
-        # Sort by load (ascending) and capabilities (descending)
-        available_nodes.sort(key=lambda n: (n.current_load, -len(n.capabilities)))
-        
-        return available_nodes[0]
+        """Find a suitable node for task execution using enhanced capabilities"""
+        optimal_nodes = self.find_optimal_nodes_for_task(task, max_nodes=1)
+        return optimal_nodes[0] if optimal_nodes else None
     
     def _assign_task_to_node(self, task: DistributedTask, node: MeshNode):
         """Assign a task to a specific node"""
@@ -633,6 +845,19 @@ def setup_ecan_integration():
     from ..ecan_attention.attention_kernel import ecan_system
     mesh_orchestrator.ecan_system = ecan_system
     logger.info("ECAN integration configured for mesh orchestrator")
+
+def setup_phase3_integration():
+    """Set up Phase 3 enhancements for the mesh orchestrator"""
+    from .discovery import discovery_service
+    from .fault_tolerance import fault_tolerance_manager
+    from .load_testing import load_testing_framework
+    
+    mesh_orchestrator.setup_phase3_components(
+        discovery_service=discovery_service,
+        fault_tolerance_manager=fault_tolerance_manager,
+        load_testing_framework=load_testing_framework
+    )
+    logger.info("Phase 3 enhancements configured for mesh orchestrator")
 
 # Create some default nodes for testing
 default_agent = MeshNode(

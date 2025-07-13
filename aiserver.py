@@ -58,6 +58,15 @@ import gensettings
 from utils import debounce
 import utils
 import structures
+
+# Cognitive Architecture Integration
+try:
+    from cognitive_architecture.integration import kobold_cognitive_integrator
+    COGNITIVE_ENABLED = True
+    logger.info("Cognitive architecture integration available")
+except ImportError as e:
+    COGNITIVE_ENABLED = False
+    logger.warning(f"Cognitive architecture not available: {e}")
 import torch
 from transformers import StoppingCriteria, GPT2Tokenizer, GPT2LMHeadModel, GPTNeoForCausalLM, GPTNeoModel, AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, modeling_utils
 from transformers import __version__ as transformers_version
@@ -2119,6 +2128,23 @@ def reset_model_settings():
     vars.newlinemode = "n"
     vars.revision    = None
     vars.lazy_load = True
+    
+    # Initialize cognitive architecture integration
+    if COGNITIVE_ENABLED:
+        try:
+            logger.info("Initializing cognitive architecture integration...")
+            success = kobold_cognitive_integrator.initialize()
+            if success:
+                logger.info("Cognitive architecture integration initialized successfully")
+                vars.cognitive_enabled = True
+            else:
+                logger.error("Failed to initialize cognitive architecture integration")
+                vars.cognitive_enabled = False
+        except Exception as e:
+            logger.error(f"Error initializing cognitive architecture: {e}")
+            vars.cognitive_enabled = False
+    else:
+        vars.cognitive_enabled = False
     
 
 def load_model(use_gpu=True, gpu_layers=None, disk_layers=None, initial_load=False, online_model="", use_breakmodel_args=False, breakmodel_args_default_to_cpu=False):
@@ -4243,6 +4269,24 @@ def actionsubmit(data, actionmode=0, force_submit=False, force_prompt_gen=False,
         if(data != ""):
             vars.lastact = data
         
+        # Process user input through cognitive architecture
+        if vars.cognitive_enabled and data and data.strip():
+            try:
+                cognitive_result = kobold_cognitive_integrator.process_user_input(
+                    data.strip(), 
+                    context={
+                        'actionmode': actionmode,
+                        'gamestarted': vars.gamestarted,
+                        'chatmode': vars.chatmode if hasattr(vars, 'chatmode') else False
+                    }
+                )
+                if 'error' not in cognitive_result:
+                    logger.debug(f"Cognitive processing completed: {len(cognitive_result.get('atomspace_patterns', []))} patterns generated")
+                else:
+                    logger.warning(f"Cognitive processing error: {cognitive_result['error']}")
+            except Exception as e:
+                logger.error(f"Error in cognitive processing: {e}")
+        
         if(not vars.gamestarted):
             vars.submission = data
             if(not no_generate):
@@ -4985,6 +5029,33 @@ def generate(txt, minimum, maximum, found_entries=None):
 def genresult(genout, flash=True, ignore_formatting=False):
     if not vars.quiet:
         logger.generation(genout.encode("unicode_escape").decode("utf-8"))
+    
+    # Process generated output through cognitive architecture
+    if vars.cognitive_enabled and genout and genout.strip():
+        try:
+            cognitive_result = kobold_cognitive_integrator.process_model_output(
+                genout.strip(),
+                context={
+                    'lastctx': getattr(vars, 'lastctx', ''),
+                    'story_length': len(vars.actions) if hasattr(vars, 'actions') else 0,
+                    'generation_settings': {
+                        'temp': vars.temp,
+                        'top_p': vars.top_p,
+                        'top_k': vars.top_k,
+                        'rep_pen': vars.rep_pen
+                    }
+                }
+            )
+            if 'error' not in cognitive_result:
+                # Apply cognitive enhancements to the generated text
+                enhanced_text = cognitive_result.get('enhanced_text', genout)
+                if enhanced_text != genout:
+                    logger.debug("Applied cognitive enhancement to generated text")
+                    genout = enhanced_text
+            else:
+                logger.warning(f"Cognitive output processing error: {cognitive_result['error']}")
+        except Exception as e:
+            logger.error(f"Error in cognitive output processing: {e}")
     
     # Format output before continuing
     if not ignore_formatting:
@@ -6154,6 +6225,23 @@ def memsubmit(data):
     # For now just send it to storage
     if(data != vars.memory):
         setgamesaved(False)
+    
+    # Process memory through cognitive architecture for enhanced importance scoring
+    if vars.cognitive_enabled and data and data.strip():
+        try:
+            # Calculate cognitive importance based on content and context
+            importance_result = kobold_cognitive_integrator.update_context_memory(
+                data.strip(),
+                importance=0.7  # Default importance, will be enhanced by cognitive processing
+            )
+            if 'error' not in importance_result:
+                enhanced_importance = importance_result.get('enhanced_importance', 0.7)
+                logger.debug(f"Cognitive memory importance score: {enhanced_importance}")
+            else:
+                logger.warning(f"Cognitive memory processing error: {importance_result['error']}")
+        except Exception as e:
+            logger.error(f"Error in cognitive memory processing: {e}")
+    
     vars.memory = data
     vars.mode = "play"
     emit('from_server', {'cmd': 'memmode', 'data': 'false'}, broadcast=True)

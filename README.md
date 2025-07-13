@@ -123,7 +123,7 @@ python aiserver.py
 - **[Developer Guide](DEVELOPER_GUIDE.md)** - Contributing and development guide (27KB)
 
 ### Phase-Specific Documentation
-- **[Phase 1: Cognitive Primitives](docs/phase1/README.md)** - AtomSpace hypergraph foundation
+- **[Phase 1: Cognitive Primitives](PHASE1_COMPLETE.md)** - AtomSpace hypergraph foundation
 - **[Phase 2: ECAN Attention](PHASE2_COMPLETE.md)** - Economic attention allocation system
 - **[Phase 3: Distributed Mesh](PHASE3_COMPLETE.md)** - Scalable distributed processing
 - **[Phase 4: KoboldAI Integration](PHASE4_COMPLETE.md)** - Seamless text generation integration

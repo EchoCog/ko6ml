@@ -277,7 +277,7 @@ class MeshDiscoveryService:
             # Create multicast socket
             self.multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.multicast_socket.bind(('', self.config.multicast_port))
+            self.multicast_socket.bind((self.config.interface_ip, self.config.multicast_port))
             
             # Join multicast group
             mreq = socket.inet_aton(self.config.multicast_group) + socket.inet_aton('0.0.0.0')

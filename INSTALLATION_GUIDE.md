@@ -400,6 +400,29 @@ python test_phaseX_requirements.py -v
 # Verify system requirements are met
 ```
 
+#### Issue 6: Tokenizers Wheel Build Failure
+```
+ERROR: Failed building wheel for tokenizers
+cargo rustc --lib --message-format=json-render-diagnostics --manifest-path Cargo.toml --release -v --features pyo3/extension-module --crate-type cdylib failed with code 101
+```
+
+**Problem**: This occurs when pip tries to build tokenizers from source due to missing pre-built wheels, but the Rust compilation fails.
+
+**Solution**: The repository now pins tokenizers to version 0.19.1 which has reliable pre-built wheels. If you encounter this error:
+
+```bash
+# Update to the latest requirements
+git pull origin main
+
+# Reinstall dependencies with the pinned tokenizers version
+pip install -r requirements.txt
+
+# For conda/micromamba installations, use the updated environment files
+micromamba install -f environments/huggingface.yml
+```
+
+**Prevention**: Always use the pinned dependency versions in requirements.txt rather than allowing pip to resolve dependencies automatically.
+
 ### Performance Issues
 
 #### Issue 1: Slow Processing

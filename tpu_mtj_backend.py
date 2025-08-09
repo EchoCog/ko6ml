@@ -47,6 +47,8 @@ import jax.numpy as jnp
 import numpy as np
 import haiku as hk
 from transformers import AutoTokenizer, GPT2Tokenizer, AutoModelForCausalLM, GPTNeoForCausalLM
+# tokenizers is pinned to 0.19.1 in requirements.txt to ensure pre-built wheels are available
+# This prevents "Failed building wheel for tokenizers" errors during installation
 from tokenizers import Tokenizer
 from mesh_transformer.checkpoint import read_ckpt_lowmem
 from mesh_transformer.transformer_shard import CausalTransformer, CausalTransformerShard, PlaceholderTensor
